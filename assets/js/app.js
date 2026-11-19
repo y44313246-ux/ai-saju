@@ -1,5 +1,5 @@
 /* =========================================================================
- * 사주결 · app.js — 화면 조립과 상호작용
+ * 사주결 · app.js — 화면 조립과 상호작용 (전부 무료 버전)
  * ========================================================================= */
 (function () {
   'use strict';
@@ -14,6 +14,24 @@
 
   /* ------------------------------------------------------------ 폼 구성 */
   function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+  /* 받침에 따라 조사를 고릅니다. (예: 을+이, 무+가) */
+  function josa(word, withFinal, withoutFinal) {
+    var w = String(word);
+    var c = w.charCodeAt(w.length - 1);
+    if (c < 0xAC00 || c > 0xD7A3) return withoutFinal;
+    return (c - 0xAC00) % 28 === 0 ? withoutFinal : withFinal;
+  }
+
+  function daysInMonth(y, m) {
+    if (!y || !m) return 31;
+    return new Date(y, m, 0).getDate();
+  }
+
+  function isRealDate(y, m, d) {
+    var dt = new Date(y, m - 1, d);
+    return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
+  }
 
   function fillSelect(sel, items, placeholder) {
     var html = '';
@@ -76,7 +94,7 @@
 
   function fillDays() {
     var isLunar = state.calendar === 'lunar';
-    var max = isLunar ? 30 : 31;
+    var max = isLunar ? 30 : daysInMonth(+$('#f-year').value, +$('#f-month').value);
     var cur = $('#f-day').value;
     var days = [];
     for (var d = 1; d <= max; d++) days.push({ value: d, label: d + '일' });
@@ -101,6 +119,9 @@
     var month = +$('#f-month').value;
     var day = +$('#f-day').value;
     if (!year || !month || !day) return showError('생년월일을 모두 선택해 주세요.');
+    if (state.calendar === 'solar' && !isRealDate(year, month, day)) {
+      return showError('달력에 없는 날짜입니다. 생년월일을 다시 확인해 주세요.');
+    }
 
     var hourVal = $('#f-hour').value;
     var input = {
@@ -192,7 +213,8 @@
     renderElements(balance);
     renderNature(profile, chart);
     renderFortune(fortune, tp);
-    updatePremium(chart);
+    renderDomains(chart);
+    renderYears(chart);
   }
 
   function renderPillars(chart) {
@@ -216,7 +238,8 @@
     $('#pillars').innerHTML = html.join('');
     $('#pillar-note').textContent = '자시(23시) 기준 · 절입 시각 반영';
     $('#pillar-caption').textContent = '일주 ' + chart.dayPillar.stemKo + chart.dayPillar.branchKo + '의 ' +
-      C.STEMS[chart.dayMaster] + '이 나의 중심(일간)입니다. 같은 글자라도 계절과 짝에 따라 다르게 쓰입니다.';
+      C.STEMS[chart.dayMaster] + josa(C.STEMS[chart.dayMaster], '이', '가') +
+      ' 나의 중심(일간)입니다. 같은 글자라도 계절과 짝에 따라 다르게 쓰입니다.';
   }
 
   function renderElements(balance) {
@@ -267,92 +290,94 @@
     }).join('');
   }
 
-  function updatePremium(chart) {
-    var open = $('#preview-open');
-    var title = $('#preview-title');
-    var line = R.yearlyLine(chart, 2026);
-    title.textContent = '2026 병오년 신년운세 · ' + (chart.input.name ? chart.input.name + '님' : '내 사주');
-    open.textContent = line.split('. ')[0] + '.';
+  /* ------------------------------------------------------------ 무료 심층 풀이 */
+  function domainCard(d) {
+    return '' +
+      '<article class="card domain-card">' +
+        '<div class="card-head row">' +
+          '<div><span class="mini-label">' + d.hanja + '</span><h3>' + d.name + '</h3></div>' +
+          '<span class="note">' + esc(d.note) + '</span>' +
+        '</div>' +
+        '<p class="domain-lead">' + esc(d.lead) + '</p>' +
+        '<div class="domain-body">' +
+          d.paras.map(function (p) { return '<p>' + esc(p) + '</p>'; }).join('') +
+        '</div>' +
+      '</article>';
   }
 
-  /* ------------------------------------------------------------ 결제 · 모달 */
-  var PRODUCTS = {
-    year2026: { name: '2026 신년운세', price: 19000 },
-    deep: { name: '심층 사주 리포트', price: 39000 },
-    bundle: { name: '신년 + 심층 패키지', price: 49000 }
-  };
-
-  $$('[data-product]').forEach(function (btn) {
-    btn.addEventListener('click', function () { purchase(btn.dataset.product); });
-  });
-
-  function purchase(key) {
-    var product = PRODUCTS[key];
-    if (!state.chart) {
-      toast('먼저 생년월일시를 입력해 사주를 열어 주세요.');
-      document.getElementById('saju-form-section').scrollIntoView({ behavior: 'smooth' });
-      return;
-    }
-    // 실제 연동 지점: /api/checkout → 토스페이먼츠·포트원 결제창 URL을 돌려받습니다.
-    fetch('api/checkout', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ product: key, chart: { dayMaster: state.chart.dayMaster, elements: state.chart.elements } })
-    }).then(function (res) {
-      if (!res.ok) throw new Error('checkout-unavailable');
-      return res.json();
-    }).then(function (data) {
-      if (data && data.checkoutUrl) { window.location.href = data.checkoutUrl; return; }
-      openDemoModal(product);
-    }).catch(function () { openDemoModal(product); });
+  function renderDomains(chart) {
+    var counts = R.tenGodCounts(chart);
+    var strength = R.strengthOf(chart, counts);
+    var list = [
+      R.moneyReading(chart, counts, strength),
+      R.careerReading(chart, counts, strength),
+      R.loveReading(chart, counts, strength),
+      R.healthReading(chart, counts, strength)
+    ];
+    $('#domains').innerHTML = list.map(domainCard).join('');
   }
 
-  function openDemoModal(product) {
-    var body = '';
-    body += '<p><strong>' + product.name + '</strong> · ' + product.price.toLocaleString('ko-KR') + '원</p>';
-    if (state.chart) {
-      var sample = R.reportSample(state.chart);
-      body += '<div class="modal-sample">' + sample.map(function (s) { return '<p>' + esc(s) + '</p>'; }).join('') + '</div>';
-    }
-    body += '<p class="modal-note">지금은 시안 단계라 결제창이 아직 연결되어 있지 않습니다. 실제 오픈 시 이 버튼에서 토스페이먼츠·포트원 결제창이 열리고, 결제가 끝나면 웹 열람 링크와 PDF가 발급됩니다. <br>연동 지점: <code>POST /api/checkout</code> → <code>POST /api/reading</code></p>';
-    body += '<button class="btn-primary" type="button" data-close>확인</button>';
-    showModal('심층 리포트 · 미리보기', body);
+  /* ------------------------------------------------------------ 신년운세 */
+  function monthCell(m) {
+    var dots = '';
+    for (var i = 1; i <= 3; i++) dots += '<i' + (i <= m.level ? ' class="on"' : '') + '></i>';
+    return '' +
+      '<div class="month-cell lv' + m.level + '">' +
+        '<div class="m-top">' +
+          '<span class="m-name">' + m.label + '</span>' +
+          '<span class="m-ganji">' + m.hanja + ' <em>' + m.ganji + '</em></span>' +
+          '<span class="m-dots" aria-label="기운 ' + m.level + '단계">' + dots + '</span>' +
+        '</div>' +
+        '<p class="m-text">' + esc(m.text) + '</p>' +
+      '</div>';
   }
 
-  function showModal(title, html) {
-    $('#modal-title').textContent = title;
-    $('#modal-body').innerHTML = html;
-    $('#modal').hidden = false;
-    document.body.style.overflow = 'hidden';
-    $$('#modal [data-close]').forEach(function (el) {
-      el.addEventListener('click', closeModal, { once: true });
+  function yearCard(yr, collapsed) {
+    if (!yr) return '';
+    var months = yr.months.map(monthCell).join('');
+    var monthBlock = collapsed
+      ? '<details class="month-more"><summary>' + yr.year + '년 월별 흐름 펼쳐 보기</summary><div class="month-grid">' + months + '</div></details>'
+      : '<div class="month-block"><div class="month-head"><span class="mini-label">月別</span><h4>월별 흐름</h4><span class="note">점 세 개가 기운의 세기</span></div><div class="month-grid">' + months + '</div></div>';
+
+    var sections = yr.sections.map(function (s) {
+      return '' +
+        '<section class="year-sec">' +
+          '<div class="year-sec-head"><span class="sec-hanja">' + s.hanja + '</span><h4>' + s.title + '</h4></div>' +
+          s.paras.map(function (p) { return '<p>' + esc(p) + '</p>'; }).join('') +
+        '</section>';
+    }).join('');
+
+    return '' +
+      '<article class="card year-card">' +
+        '<div class="card-head row">' +
+          '<div><span class="mini-label">' + yr.hanja + ' · ' + yr.year + '</span><h3>' + yr.label + ' 신년운세</h3></div>' +
+          '<span class="note">' + yr.god + '의 해</span>' +
+        '</div>' +
+        '<p class="year-headline">' + esc(yr.headline) + '</p>' +
+        '<p class="year-theme">' + esc(yr.theme) + '</p>' +
+        '<div class="kw-row">' + yr.keywords.map(function (k) { return '<span class="kw">' + esc(k) + '</span>'; }).join('') + '</div>' +
+        '<div class="year-sections">' + sections + '</div>' +
+        monthBlock +
+        '<p class="card-foot">흐름이 무거운 달은 ' + (yr.risky.length ? yr.risky.slice(0, 3).join('·') : '없음') +
+        ', 힘이 실리는 달은 ' + (yr.good.length ? yr.good.slice(0, 3).join('·') : '고르게 이어짐') + '입니다.</p>' +
+      '</article>';
+  }
+
+  function renderYears(chart) {
+    var host = $('#years');
+    host.innerHTML = yearCard(R.yearReading(chart, 2026), false) + yearCard(R.yearReading(chart, 2027), true);
+  }
+
+  /* ------------------------------------------------------------ 광고 슬롯 */
+  /* 실제 광고 코드가 들어온 뒤, 결과를 다시 그릴 때 슬롯을 다시 채웁니다. */
+  function refreshAds() {
+    var slots = $$('.ad-slot ins.adsbygoogle');
+    if (!slots.length) return;
+    slots.forEach(function () {
+      try { (window.adsbygoogle = window.adsbygoogle || []).push({}); } catch (e) { /* 광고 미설정 */ }
     });
   }
-
-  function closeModal() {
-    $('#modal').hidden = true;
-    document.body.style.overflow = '';
-  }
-
-  document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape' && !$('#modal').hidden) closeModal();
-  });
-
-  var toastTimer;
-  function toast(msg) {
-    var el = $('#toast');
-    el.textContent = msg;
-    el.classList.add('is-on');
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { el.classList.remove('is-on'); }, 2600);
-  }
-
-  $$('[data-todo]').forEach(function (a) {
-    a.addEventListener('click', function (e) {
-      e.preventDefault();
-      toast('시안 단계에서는 준비 중인 페이지입니다.');
-    });
-  });
 
   initForm();
+  refreshAds();
 })();
