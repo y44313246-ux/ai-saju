@@ -1,0 +1,15 @@
+{
+  "name": "ai-saju",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "사주결 — 만세력 기반 사주팔자·오행 분석과 오늘의 운세, 심층 리포트 시안",
+  "scripts": {
+    "dev": "python3 -m http.server 8000",
+    "dev:node": "npx --yes serve . -l 8000",
+    "start": "python3 -m http.server 8000"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
