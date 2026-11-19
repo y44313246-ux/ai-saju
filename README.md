@@ -102,7 +102,22 @@ vercel dev        # http://localhost:3000, api 함수까지 함께 실행
 3. `(adsbygoogle = window.adsbygoogle || []).push({});` 호출
 4. 승인 전에는 심사용으로 **콘텐츠 페이지(사주 용어 사전, 오늘의 일진 등)** 를 몇 개 더 두는 것이 유리합니다.
 
-## 5. GitHub → Vercel 배포
+## 5. 배포
+
+### 5-1. GitHub Pages (지금 라이브)
+
+- 사이트: <https://y44313246-ux.github.io/ai-saju/>
+- 저장소: <https://github.com/y44313246-ux/ai-saju> (public)
+- 게시 소스: `gh-pages` 브랜치 루트 (GitHub Pages **Deploy from a branch**)
+- 그래서 `main`에 푸시한 뒤에는 `gh-pages`도 같이 맞춰 줍니다.
+  ```bash
+  git push origin main:gh-pages
+  ```
+- 정적 호스팅이라 무료 풀이(만세력 계산·오늘의 운세·신년운세 샘플 모달)는 모두 그대로 동작하고,
+  `/api/checkout`·`/api/reading`만 응답하지 않아 결제 버튼이 ‘미리보기 모달’로 대체됩니다.
+- 수정사항이 사이트에 반영되기까지 보통 30초~2분 걸립니다(빌드 상태: 저장소 → Actions → pages build and deployment).
+
+### 5-2. GitHub → Vercel 배포 (AI·결제까지 켤 때)
 
 ```bash
 cd projects/ai-saju
